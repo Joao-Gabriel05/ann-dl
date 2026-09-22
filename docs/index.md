@@ -20,14 +20,15 @@ Quem responde por este repositório. Os **exercícios são individuais**; a equi
 |---------------|--------|--------|
 | João Gabriel Faraco | *(preencher com o e-mail institucional)* | [@Joao-Gabriel05](https://github.com/Joao-Gabriel05) |
 
-!!! tip "Como usar este template"
+!!! tip "Como este repositório é organizado"
 
-    Este é um **bloco de notas versionado**: registre o que foi feito, o que falta e as
-    decisões tomadas, commitando a cada avanço. O prazo de uma entrega é o *timestamp do
-    último commit que toca a pasta daquela entrega* — não a hora do formulário nem a da
-    publicação no Pages.
+    Cada entrega mora em `docs/exercises/<slug>/`, com o relatório em `index.md`, os
+    scripts que realmente rodaram em `code/`, as figuras versionadas em `figures/` e os
+    dados gerados em `data/`. Os relatórios incluem o código por `--8<--`, nunca copiado
+    e colado, de modo que site e repositório não saem de sincronia.
 
-    Comece por [Como usar este template](template/index.md).
+    O prazo de uma entrega é o *timestamp do último commit que toca a pasta daquela
+    entrega* — não a hora do formulário nem a da publicação no Pages.
 
 ## Status das entregas
 
