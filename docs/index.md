@@ -2,7 +2,7 @@
 
 ???+ info inline end "Edição"
 
-    **20XX.X** <!-- TROCAR -->
+    **2026.2**
 
     [Enunciados :material-open-in-new:](https://insper.github.io/ann-dl/){:target='_blank'}
 
@@ -18,7 +18,7 @@ Quem responde por este repositório. Os **exercícios são individuais**; a equi
 
 | Nome completo | E-mail | GitHub |
 |---------------|--------|--------|
-| | | |
+| João Gabriel Faraco | *(preencher com o e-mail institucional)* | [@Joao-Gabriel05](https://github.com/Joao-Gabriel05) |
 
 !!! tip "Como usar este template"
 
@@ -42,8 +42,8 @@ Quem responde por este repositório. Os **exercícios são individuais**; a equi
 
 ### Exercícios — individuais
 
-- [ ] [Data](exercises/data/index.md)
-- [ ] [Perceptron](exercises/perceptron/index.md)
+- [x] [Data](exercises/data/index.md)
+- [x] [Perceptron](exercises/perceptron/index.md)
 - [ ] [MLP](exercises/mlp/index.md)
 - [ ] [VAE](exercises/vae/index.md)
 
