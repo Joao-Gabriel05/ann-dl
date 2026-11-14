@@ -65,7 +65,7 @@ no IMC. Detalhes no [EDA](eda/index.md).
 ## Status
 
 - [x] **1. EDA**
-- [ ] **2. Classificação**
+- [x] **2. Classificação**
 - [ ] **3. Generativo**
 
 ## Registro de decisões
