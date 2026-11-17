@@ -211,8 +211,13 @@ mesmo limiar, 0,710:
 | Recall (AVC) | 0,00 | **0,720** | 0,467 ± 0,023 |
 | Precisão (AVC) | 0,00 | 0,188 | 0,185 ± 0,022 |
 | F1 (AVC) | 0,00 | **0,299** | 0,264 ± 0,023 |
+| Precisão (sem AVC) | 0,951 | **0,983** | 0,970 ± 0,001 |
+| Recall (sem AVC) | **1,000** | 0,840 | 0,893 ± 0,018 |
+| F1 (sem AVC) | **0,975** | 0,906 | 0,930 ± 0,010 |
 
-Seeds individuais da rede: PR-AUC 0,159 / 0,172 / 0,169.
+Seeds individuais da rede: PR-AUC 0,159 / 0,172 / 0,169. A distância para a logística
+(0,205 − 0,167 = 0,038) é **cinco vezes** o desvio entre seeds (0,007): a diferença não é
+variação de inicialização.
 
 A rede só ganha em acurácia (0,872 contra 0,834), e pelo motivo errado: ela encaminha menos
 pacientes, então acerta mais negativos e perde mais AVCs — recall de 0,467 contra 0,720.
@@ -279,6 +284,11 @@ seguida, com cerca de um quinto disso cada, e **tudo a partir de `work_type` est
 próprio ruído ou é negativo**. O caso extremo é `heart_disease`: embaralhá-la *melhora* a
 PR-AUC em 0,048, o que significa que a rede dá a essa coluna um peso que o teste não
 sustenta (hipótese 3, abaixo).
+
+**Comparação com o EDA.** Confere em `age` (a feature dominante, AUC 0,833 sozinha), em
+`hypertension` (taxa de AVC 3,2× maior) e em `gender` e `Residence_type`, que o EDA já
+esperava sem efeito. Diverge em `heart_disease`: o EDA a apontava como o sinal categórico
+mais forte (taxa de AVC 3,9× maior), e na rede ela piora o teste.
 
 O EDA mediu `age` sozinha com AUC **0,833**. A rede inteira, com 3.393 parâmetros e 19
 features, faz ROC-AUC **0,813**. **A rede reconstruiu a idade e pouco além dela** — e pagou
@@ -377,23 +387,18 @@ medidos acima:
   masculinos e 32 femininos no teste, a diferença de recall é incerta, mas qualquer uso real
   exigiria auditá-la antes de qualquer outra coisa.
 
-### Tabela resumo
+### Results summary
 
-| | |
-|---|---|
-| Tarefa | Classificação binária de `stroke` |
-| Dataset | Stroke Prediction (Kaggle), 5.087 linhas após limpeza, 19 features |
-| Split | 80/20 estratificado, `random_state=42`; validação 20% do treino |
-| Métrica principal | PR-AUC no teste |
-| Critério fixado | ≥ 15% acima da melhor baseline (3 seeds) |
-| Melhor baseline | Regressão logística, PR-AUC **0,205** |
-| Rede escolhida | MLP 64-32, ReLU, dropout 0,3, weight decay 1e-3, AdamW lr 1e-3, batch 64, 3.393 params |
-| Perda | `BinaryCrossentropy(from_logits=True)` com `class_weight` 1 : 19,47 |
-| Limiar | 0,710, por F2 na validação |
-| **Resultado da rede** | PR-AUC **0,167 ± 0,007**; ROC-AUC 0,813; recall 0,467; precisão 0,185 |
-| **Critério atendido?** | **Não** — 18,6% abaixo da baseline |
-| Feature dominante | `age` (0,102 de 0,175 de PR-AUC por permutação) |
-| Conclusão | O modelo linear é o recomendado; 159 positivos de treino não sustentam a MLP |
+| # | Summary | Value |
+|---|---|---|
+| 1 | Dataset, task, target and main metric | Stroke Prediction (Kaggle) · classificação binária · `stroke` · PR-AUC no teste |
+| 2 | Train · validation · test (rows) | 3.255 · 814 · 1.018 (159 · 40 · 50 AVCs) |
+| 3 | Best baseline and its test metric | Regressão logística (`class_weight="balanced"`): PR-AUC 0,205 |
+| 4 | Chosen network: layers × units, number of parameters, regularization | MLP 64-32 (2 ocultas, ReLU), 3.393 parâmetros, dropout 0,3 + weight decay 1e-3 |
+| 5 | Optimizer, learning rate, batch and the epoch it stopped at | AdamW, lr 1e-3, batch 64; early stopping restaurou as épocas 53 / 29 / 14 (seeds 42 / 7 / 2024) |
+| 6 | The network's main metric on the test set (mean ± std, 3 seeds) | PR-AUC 0,167 ± 0,007 |
+| 7 | Success criterion met? | Não: 18,6% abaixo da logística (o critério pedia 15% acima) |
+| 8 | Subgroup with the largest error and its value | Idade 75+: taxa de erro 0,592 (taxa de FP 0,642; recall 0,591) |
 
 ## Código {#codigo}
 
