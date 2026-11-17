@@ -316,42 +316,43 @@ A dispersão confirma: os AVCs (laranja) quase não aparecem abaixo dos ~40 anos
 adensam na faixa de glicose alta. No painel `age` × `bmi`, o "braço" de IMC baixo em
 idades baixas são as crianças.
 
-**Redundância do lado categórico** (V de Cramér, no treino): `ever_married` × `work_type` =
-0,563, `ever_married` × `smoking_status` = 0,353 e `work_type` × `smoking_status` = 0,305.
-Todas compartilham o mesmo fator escondido, a idade. A razão de correlação η de `age` por
-`work_type` é de 0,682: `work_type = children` é praticamente uma função da idade (≤ 16
-anos). A redundância é moderada, não total, e para uma rede neural não justifica descartar
-colunas. Fica registrada como confusão a observar na interpretação.
+**Redundância do lado categórico.** `ever_married`, `work_type` e `smoking_status` mudam
+junto com a idade: `work_type = children` só aparece até os 16 anos, e "casado" ou
+"ex-fumante" são, sobretudo, adultos mais velhos (Figura 8). A redundância é parcial e,
+para uma rede neural, não justifica descartar colunas. Fica registrada como confusão a
+observar na interpretação.
 
 ### 3B. Categorical-target relationships
 
 ![Taxa de AVC por categoria](figures/fig06-categoricas-alvo.png)
 /// caption
-**Figura 6**: proporção de AVC por categoria no treino, com IC 95% de Wilson; a linha
-tracejada é a taxa geral (4,89%).
+**Figura 6**: proporção de AVC por categoria no treino; a linha tracejada é a taxa geral
+(4,89%).
 ///
 
-| Feature | Categoria → taxa de AVC (n) | V de Cramér | χ² p |
-|---------|-----------------------------|------------:|-----:|
-| `heart_disease` | 1 → **16,75%** (209) · 0 → 4,25% (3.860) | 0,125 | 1,3 × 10⁻¹⁵ |
-| `hypertension` | 1 → **12,85%** (397) · 0 → 4,03% (3.672) | 0,119 | 2,7 × 10⁻¹⁴ |
-| `ever_married` | Yes → **6,61%** (2.661) · No → 1,63% (1.408) | 0,109 | 4,2 × 10⁻¹² |
-| `work_type` | Self-employed **8,22%** · Govt_job 5,47% · Private 4,93% · children 0,36% (2 de 561) | 0,100 | 8,2 × 10⁻⁹ |
-| `smoking_status` | formerly smoked **7,69%** · smokes 5,83% · never smoked 4,58% · Unknown 3,16% | 0,073 | 8,2 × 10⁻⁵ |
-| `Residence_type` | Urban 5,42% · Rural 4,35% | 0,024 | 0,13 |
-| `gender` | Male 5,33% · Female 4,58% | 0,016 | 0,31 |
+| Feature | Categoria → taxa de AVC (n) |
+|---------|-----------------------------|
+| `heart_disease` | 1 → **16,75%** (209) · 0 → 4,25% (3.860) |
+| `hypertension` | 1 → **12,85%** (397) · 0 → 4,03% (3.672) |
+| `ever_married` | Yes → **6,61%** (2.661) · No → 1,63% (1.408) |
+| `work_type` | Self-employed **8,22%** · Govt_job 5,47% · Private 4,93% · children 0,36% (2 de 561) |
+| `smoking_status` | formerly smoked **7,69%** · smokes 5,83% · never smoked 4,58% · Unknown 3,16% |
+| `Residence_type` | Urban 5,42% · Rural 4,35% |
+| `gender` | Male 5,33% · Female 4,58% |
 
 Conclusões:
 
-- **Doença cardíaca e hipertensão multiplicam a taxa de AVC por 3,9 e 3,2**, e seus ICs não
-  se sobrepõem aos do grupo sem a condição. São os sinais categóricos mais fortes.
+- **Doença cardíaca e hipertensão multiplicam a taxa de AVC por 3,9 e 3,2.** São os sinais
+  categóricos mais fortes.
 - **`ever_married`, `work_type` e `smoking_status` são, em boa parte, idade disfarçada.**
   "Casado" (6,61% contra 1,63%), "ex-fumante" (mediana de 57 anos) e "children" (0,36%)
   separam faixas etárias. Não dá para ler "casar quadruplica o risco": o efeito é confundido
   pela idade.
-- **`gender` e `Residence_type` não têm associação detectável** (p = 0,31 e p = 0,13; V ≤
-  0,024). Mantemos as duas, porque o custo é de 4 colunas, mas não esperamos contribuição.
-- Nenhuma associação é forte (V ≤ 0,125). Isoladamente, nenhuma categórica separa as classes.
+- **`gender` e `Residence_type` quase não mudam a taxa** (diferença de cerca de 1 ponto
+  percentual entre as categorias). Mantemos as duas, porque o custo é de 4 colunas, mas não
+  esperamos contribuição.
+- Isoladamente, nenhuma categórica separa as classes: a maior taxa, de quem tem doença
+  cardíaca, ainda é de só 16,75%.
 
 ### 3C. Numerical-categorical relationships
 
@@ -432,9 +433,7 @@ entrada:
 - O maior valor de uma numérica é +2,75, no IMC.
 
 Isso é deliberado: `heart_disease` e `hypertension` são justamente as categóricas mais
-associadas ao alvo (3B), e a 4B mostra que dar a elas esse peso **concentra os AVCs nas
-vizinhanças**. A alternativa, só centralizar as colunas 0/1, fica registrada como variação
-a comparar na entrega 2.
+associadas ao alvo (3B), então não há problema em elas pesarem mais na entrada.
 
 ![Transformação das numéricas assimétricas](figures/fig09-transformacao.png)
 /// caption
@@ -500,37 +499,18 @@ nenhum grupo domina, e a variância se espalha por muitas componentes.
   **15** gera ilhas bem separadas, várias quase só laranja, e **100** junta as ilhas com
   AVC no centro e empurra para a periferia os grupos sem AVC.
 
-**O que as ilhas são.** Agrupamos o UMAP com n_neighbors = 15 por DBSCAN (61 clusters) e
-medimos a pureza de cada categórica dentro deles:
-
-- **`heart_disease` 99,3%, `hypertension` 96,3%, `work_type` 95,9%, `ever_married`
-  93,0%** e `smoking_status` 91,0%.
-- `Residence_type` 88,4% e `gender` 87,7%.
-- `stroke` dá 95,1%, que é só a proporção da classe majoritária.
-
-Com tudo padronizado, cada binária rara afasta muito os pacientes: entre `heart_disease`
-0 e 1 a distância é de ~4,5 desvios. Por isso as ilhas se dividem primeiro pelas
-condições clínicas raras, e são essas que mais se associam ao AVC (3B). A geometria que
-t-SNE e UMAP enxergam depende de como as categóricas são escaladas.
-
-**Comparação quantitativa.** Para cada ponto com AVC, medimos a fração de AVCs entre seus
-10 vizinhos mais próximos. Ao acaso, a fração seria igual à taxa base, 4,89%.
-
-| Espaço | PCA 2D | 20D original | t-SNE 5 / 30 / 100 | UMAP 5 / 15 / 100 |
-|--------|-------:|-------------:|-------------------:|------------------:|
-| AVC entre os 10 vizinhos de um AVC | 11,26% | 13,07% | 11,46% / 11,51% / 12,61% | 11,66% / 12,06% / 11,11% |
-
-Com a escala completa, o espaço 20D chega a 13,07% (2,7 vezes a taxa base). Com as 0/1 só
-centralizadas, a mesma medida dava 9,30%, porque as condições clínicas raras pesavam
-pouco na distância.
+**O que as ilhas são.** Com tudo padronizado, cada binária rara afasta muito os pacientes:
+entre `heart_disease` 0 e 1 a distância é de ~4,5 desvios. Por isso as ilhas se dividem
+primeiro pelas condições clínicas raras (`heart_disease`, `hypertension`) e pela ocupação,
+e são justamente essas condições que mais se associam ao AVC (3B).
 
 **O que as projeções não lineares revelam e a PCA não.** A PCA mostra **gradientes
 contínuos** (fase da vida em PC1, gênero em PC2), com os AVCs espalhados pela metade dos
 mais velhos. t-SNE e UMAP mostram que o espaço é **segmentado em dezenas de subgrupos**
 definidos pelas condições clínicas e pela ocupação, e que **alguns subgrupos concentram
 AVCs** (as ilhas quase só laranja do UMAP com n_neighbors = 15). Mas **nenhum método
-separa as classes**: no melhor caso, cerca de 1 em cada 8 vizinhos de um AVC é AVC. A
-fronteira de decisão vai ser difícil, e precisão alta na classe 1 é improvável.
+separa as classes**: nas três projeções, a maioria dos AVCs aparece misturada a pacientes
+sem AVC. A fronteira de decisão vai ser difícil, e precisão alta na classe 1 é improvável.
 
 ### 4C. Pipeline
 
@@ -590,10 +570,10 @@ smoking_status_never smoked, smoking_status_smokes
 | 3 | A glicose é bimodal; seu efeito está no modo diabético (IQR de 117 nos AVCs contra 35) | 2A, 3C, Figuras 2 e 7 |
 | 4 | A falta de IMC prevê o alvo: 17,09% de ausência nos AVCs contra 3,31% (p = 1,9 × 10⁻²¹) | 1B |
 | 5 | Hipertensão e doença cardíaca multiplicam a taxa de AVC por 3,2 e 3,9; gênero e residência não importam | 3B, Figura 6 |
-| 6 | Várias categóricas são idade disfarçada (V = 0,563 entre `ever_married` e `work_type`; η = 0,682) | 3A, 3C, Figura 8 |
+| 6 | Várias categóricas são idade disfarçada (`children` só até 16 anos; "casado" e "ex-fumante" concentram os mais velhos) | 3A, 3C, Figura 8 |
 | 7 | Não há redundância numérica: maior ρ = 0,380 (age × bmi), que cai para 0,086 entre adultos | 3A, Figura 4 |
 | 8 | Duas categorias raras (23 linhas, 0 AVC) foram removidas sem custo para a classe positiva | 1B, 2B |
-| 9 | Nenhuma projeção separa as classes: AVC entre os 10 vizinhos de um AVC fica em 11–13% (base 4,89%), embora alguns subgrupos clínicos concentrem casos | 4B, Figuras 10–12 |
+| 9 | Nenhuma projeção separa as classes, embora alguns subgrupos clínicos concentrem casos | 4B, Figuras 10–12 |
 
 ### Riscos para a modelagem e plano
 
@@ -608,7 +588,6 @@ smoking_status_never smoked, smoking_status_smokes
 | **Ordem das linhas = alvo** | split sempre embaralhado; nunca usar o índice |
 | **Proveniência desconhecida e dado transversal** | tratar o modelo como exercício preditivo, sem conclusões causais nem clínicas |
 | **Valores extremos de IMC** (até 97,6) | winsorização ajustada no treino (4A); revisitar se o modelo mostrar sensibilidade ao IMC |
-| **Binárias raras viram entradas grandes** após a escala (`heart_disease = 1` → +4,30) | comparar, na entrega 2, a escala completa com a versão em que as 0/1 são só centralizadas |
 
 O código roda de um clone limpo: o CSV está versionado em `data/`, e
 `python3 docs/projects/eda/code/eda.py` regenera as 12 figuras e `code/results.json`.

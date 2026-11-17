@@ -29,12 +29,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (average_precision_score, roc_auc_score, roc_curve,
                              precision_recall_curve, confusion_matrix,
                              precision_recall_fscore_support, f1_score,
-                             accuracy_score, recall_score, precision_score)
+                             accuracy_score, recall_score, precision_score,
+                             fbeta_score)
 
 from preprocessing import load_raw, clean, split, build_preprocessor, FEATURES, TARGET
 from network import build_mlp, fit, logits, n_params
@@ -111,16 +111,12 @@ lg = LogisticRegression(max_iter=5000, class_weight="balanced",
                         random_state=SEED).fit(Xtr, ytr)
 bl["logreg"] = ev(yva, lg.predict_proba(Xva)[:, 1])
 bl["logreg"]["n_params"] = int(Xtr.shape[1] + 1)
-rf = RandomForestClassifier(n_estimators=500, min_samples_leaf=5,
-                            class_weight="balanced_subsample",
-                            random_state=SEED, n_jobs=-1).fit(Xtr, ytr)
-bl["rf"] = ev(yva, rf.predict_proba(Xva)[:, 1])
 res["baselines_val"] = bl
-print("[1] val PR-AUC  dummy %.4f | logreg %.4f | rf %.4f"
-      % (bl["dummy"]["pr_auc"], bl["logreg"]["pr_auc"], bl["rf"]["pr_auc"]))
+print("[1] val PR-AUC  dummy %.4f | logreg %.4f"
+      % (bl["dummy"]["pr_auc"], bl["logreg"]["pr_auc"]))
 
 # ================================================ Passo 2 + 3: a rede, treinada
-net = build_mlp(Xtr.shape[1], widths=(32, 16), activation="relu", lr=1e-3, seed=SEED)
+net = build_mlp(Xtr.shape[1], widths=(32, 16), lr=1e-3, seed=SEED)
 res["network"] = {
     "widths": [32, 16], "activation": "relu", "output": "1 neurônio linear (logit)",
     "loss": "BinaryCrossentropy(from_logits=True)", "init": "He uniform",
@@ -166,13 +162,10 @@ regs = [
     ("nenhuma", {}),
     ("dropout 0,2", {"dropout": 0.2}),
     ("weight decay 1e-3", {"weight_decay": 1e-3}),
-    ("dropout + decay", {"dropout": 0.2, "weight_decay": 1e-3}),
-    ("batch norm", {"batchnorm": True}),
 ]
 reg_rows = []
 for name, kw in regs:
-    m = build_mlp(Xtr.shape[1], widths=(32, 16), activation="relu", lr=1e-3,
-                  seed=SEED, **kw)
+    m = build_mlp(Xtr.shape[1], widths=(32, 16), lr=1e-3, seed=SEED, **kw)
     hi = fit(m, Xtr, ytr, Xva, yva, batch_size=64, max_epochs=200, patience=20,
              pos_weight=POS_W)
     a_tr = float(average_precision_score(ytr, logits(m, Xtr)))
@@ -183,7 +176,7 @@ for name, kw in regs:
     print("[4a] %-20s treino %.4f val %.4f gap %+.4f" % (name, a_tr, a_va, a_tr - a_va))
 res["regularization"] = reg_rows
 
-fig, ax = plt.subplots(figsize=(9, 4.3))
+fig, ax = plt.subplots(figsize=(7, 4.3))
 pos = np.arange(len(reg_rows)); w = 0.38
 ax.bar(pos - w / 2, [r["train_pr_auc"] for r in reg_rows], w, color=C[0], label="treino")
 ax.bar(pos + w / 2, [r["val_pr_auc"] for r in reg_rows], w, color=C[1], label="validação")
@@ -197,35 +190,36 @@ ax.set_title("Figura 2 — Efeito de cada regularizador na distância treino–v
 fig.tight_layout(); fig.savefig(FIG / "fig02-regularizacao.png"); plt.close(fig)
 
 # ================================== Passo 4b: busca de hiperparâmetros (validação)
+# 9 configurações (a rubrica pede 8+): largura/profundidade, dropout, weight
+# decay, learning rate e batch, todas com ReLU
 grid = [
-    dict(widths=(16,),      act="relu", do=0.0, wd=0.0,  lr=1e-3, bs=64),
-    dict(widths=(32, 16),   act="relu", do=0.0, wd=0.0,  lr=1e-3, bs=64),
-    dict(widths=(32, 16),   act="relu", do=0.2, wd=1e-3, lr=1e-3, bs=64),
-    dict(widths=(32, 16),   act="tanh", do=0.2, wd=1e-3, lr=1e-3, bs=64),
-    dict(widths=(64, 32),   act="relu", do=0.3, wd=1e-3, lr=1e-3, bs=64),
-    dict(widths=(64, 32),   act="relu", do=0.3, wd=1e-2, lr=5e-4, bs=64),
-    dict(widths=(64, 32, 16), act="relu", do=0.3, wd=1e-3, lr=1e-3, bs=128),
-    dict(widths=(128, 64),  act="relu", do=0.4, wd=1e-2, lr=5e-4, bs=128),
-    dict(widths=(32, 16),   act="relu", do=0.1, wd=1e-4, lr=3e-3, bs=32),
-    dict(widths=(16, 8),    act="relu", do=0.2, wd=1e-3, lr=1e-3, bs=32),
+    dict(widths=(16,),        do=0.0, wd=0.0,  lr=1e-3, bs=64),
+    dict(widths=(32, 16),     do=0.0, wd=0.0,  lr=1e-3, bs=64),
+    dict(widths=(32, 16),     do=0.2, wd=1e-3, lr=1e-3, bs=64),
+    dict(widths=(64, 32),     do=0.3, wd=1e-3, lr=1e-3, bs=64),
+    dict(widths=(64, 32),     do=0.3, wd=1e-2, lr=5e-4, bs=64),
+    dict(widths=(64, 32, 16), do=0.3, wd=1e-3, lr=1e-3, bs=128),
+    dict(widths=(128, 64),    do=0.4, wd=1e-2, lr=5e-4, bs=128),
+    dict(widths=(32, 16),     do=0.1, wd=1e-4, lr=3e-3, bs=32),
+    dict(widths=(16, 8),      do=0.2, wd=1e-3, lr=1e-3, bs=32),
 ]
 search = []
 for i, g in enumerate(grid):
-    m = build_mlp(Xtr.shape[1], widths=g["widths"], activation=g["act"],
-                  dropout=g["do"], weight_decay=g["wd"], lr=g["lr"], seed=SEED)
+    m = build_mlp(Xtr.shape[1], widths=g["widths"], dropout=g["do"],
+                  weight_decay=g["wd"], lr=g["lr"], seed=SEED)
     hi = fit(m, Xtr, ytr, Xva, yva, batch_size=g["bs"], max_epochs=200,
              patience=20, pos_weight=POS_W)
     s = logits(m, Xva)
     search.append({
-        "id": i + 1, "widths": list(g["widths"]), "activation": g["act"],
+        "id": i + 1, "widths": list(g["widths"]),
         "dropout": g["do"], "weight_decay": g["wd"], "lr": g["lr"],
         "batch_size": g["bs"], "n_params": n_params(m),
         "best_epoch": hi["best_epoch"],
         "val_pr_auc": float(average_precision_score(yva, s)),
         "val_roc_auc": float(roc_auc_score(yva, s)),
     })
-    print("[4b] cfg %2d %-12s %s do=%.1f wd=%g lr=%g bs=%3d -> val PR-AUC %.4f"
-          % (i + 1, "x".join(map(str, g["widths"])), g["act"], g["do"], g["wd"],
+    print("[4b] cfg %2d %-12s do=%.1f wd=%g lr=%g bs=%3d -> val PR-AUC %.4f"
+          % (i + 1, "x".join(map(str, g["widths"])), g["do"], g["wd"],
              g["lr"], g["bs"], search[-1]["val_pr_auc"]))
 search.sort(key=lambda r: -r["val_pr_auc"])
 res["search"] = search
@@ -236,8 +230,8 @@ print("[4b] vencedora: cfg %d, val PR-AUC %.4f" % (best["id"], best["val_pr_auc"
 
 def build_best(seed):
     return build_mlp(Xtr.shape[1], widths=tuple(best["widths"]),
-                     activation=best["activation"], dropout=best["dropout"],
-                     weight_decay=best["weight_decay"], lr=best["lr"], seed=seed)
+                     dropout=best["dropout"], weight_decay=best["weight_decay"],
+                     lr=best["lr"], seed=seed)
 
 
 # ============================ limiar escolhido na validação (custo assimétrico)
@@ -246,16 +240,13 @@ fit(mb, Xtr, ytr, Xva, yva, batch_size=best["batch_size"], max_epochs=200,
     patience=20, pos_weight=POS_W)
 pv = 1 / (1 + np.exp(-logits(mb, Xva)))
 ths = np.linspace(0.02, 0.98, 193)
-rows = [{"th": float(t),
-         "recall": float(recall_score(yva, (pv >= t).astype(int), zero_division=0)),
-         "precision": float(precision_score(yva, (pv >= t).astype(int), zero_division=0)),
-         "f2": float((5 * precision_score(yva, (pv >= t).astype(int), zero_division=0)
-                      * recall_score(yva, (pv >= t).astype(int), zero_division=0))
-                     / (4 * precision_score(yva, (pv >= t).astype(int), zero_division=0)
-                        + recall_score(yva, (pv >= t).astype(int), zero_division=0))
-                     if precision_score(yva, (pv >= t).astype(int), zero_division=0)
-                     + recall_score(yva, (pv >= t).astype(int), zero_division=0) > 0 else 0.0)}
-        for t in ths]
+rows = []
+for t in ths:
+    p = (pv >= t).astype(int)
+    rows.append({"th": float(t),
+                 "recall": float(recall_score(yva, p, zero_division=0)),
+                 "precision": float(precision_score(yva, p, zero_division=0)),
+                 "f2": float(fbeta_score(yva, p, beta=2, zero_division=0))})
 th = max(rows, key=lambda r: r["f2"])
 res["threshold"] = {
     "value": th["th"], "rule": "maximiza F2 na validação",
@@ -270,7 +261,7 @@ TH = th["th"]
 print("[4c] limiar %.3f -> val recall %.3f precisão %.3f (F2 %.3f)"
       % (TH, th["recall"], th["precision"], th["f2"]))
 
-json.dump(res, open(HERE / "results.json", "w"), indent=2, ensure_ascii=False)
+json.dump(res, open(HERE / "results.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 print("[ok] passos 0-4 em %.1fs" % (time.time() - t0))
 
 # ============================================== Passo 5: teste, uma vez, 3 seeds
@@ -307,9 +298,8 @@ bt = {}
 dc_t = DummyClassifier(strategy="most_frequent", random_state=SEED).fit(Xtr, ytr)
 bt["dummy"] = ev(yte, dc_t.predict_proba(Xte)[:, 1])
 bt["logreg"] = ev(yte, lg.predict_proba(Xte)[:, 1], TH)
-bt["rf"] = ev(yte, rf.predict_proba(Xte)[:, 1], TH)
 res["test_baselines"] = bt
-best_base_pr = max(bt["logreg"]["pr_auc"], bt["rf"]["pr_auc"])
+best_base_pr = bt["logreg"]["pr_auc"]
 res["verdict"] = {
     "net_pr_auc_mean": res["test_net"]["pr_auc"]["mean"],
     "best_baseline_pr_auc": float(best_base_pr),
@@ -327,8 +317,7 @@ res["test_net"]["ensemble_of_seeds"] = ev(yte, mean_score, TH)
 # --------------------------------------------------- Figuras 3 e 4
 fig, ax = plt.subplots(1, 2, figsize=(11, 4.3))
 for nm, s, c in [("rede (média 3 seeds)", mean_score, C[0]),
-                 ("regressão logística", lg.predict_proba(Xte)[:, 1], C[1]),
-                 ("random forest", rf.predict_proba(Xte)[:, 1], C[2])]:
+                 ("regressão logística", lg.predict_proba(Xte)[:, 1], C[1])]:
     fpr, tpr, _ = roc_curve(yte, s)
     ax[0].plot(fpr, tpr, color=c, label="%s (AUC %.3f)" % (nm, roc_auc_score(yte, s)))
     p_, r_, _ = precision_recall_curve(yte, s)
@@ -462,5 +451,5 @@ ax.set_title("Figura 6 — Onde o erro se concentra: recall e falso positivo por
              "limiar %.3f no teste" % TH, loc="left")
 fig.tight_layout(); fig.savefig(FIG / "fig06-subgrupos.png"); plt.close(fig)
 
-json.dump(res, open(HERE / "results.json", "w"), indent=2, ensure_ascii=False)
+json.dump(res, open(HERE / "results.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 print("[ok] tudo em %.1fs -> results.json + 6 figuras" % (time.time() - t0))

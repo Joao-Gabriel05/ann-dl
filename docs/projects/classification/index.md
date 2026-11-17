@@ -68,7 +68,6 @@ Mesmo pipeline, mesmas features, avaliadas na validação:
 |---|---|---|---|---|---|
 | `DummyClassifier(most_frequent)` | 0,049 | 0,500 | 0,00 | 0,00 | 0 |
 | Regressão logística (`class_weight="balanced"`) | **0,231** | — | — | — | 21 |
-| Random forest (500 árvores, `min_samples_leaf=5`) | 0,188 | — | — | — | — |
 
 A PR-AUC do trivial (0,049) é exatamente a prevalência: é o chão de qualquer modelo que não
 ordene nada. A leitura que importa é a **segunda linha**: 21 parâmetros em um modelo linear
@@ -76,12 +75,10 @@ já alcançam 0,231. Esse é o número que a rede precisa bater, e o EDA já tin
 quê — `age` sozinha tem AUC 0,833. O sinal deste dataset é largamente monotônico na idade, o
 que é precisamente o regime em que um modelo linear é difícil de superar.
 
-A random forest ficou *abaixo* da logística (0,188), o que reforça o diagnóstico: a
-capacidade extra não encontra estrutura extra para explorar.
-
 ## Passo 2 · A rede
 
-MLP densa, duas camadas ocultas, escrita em Keras/TensorFlow:
+MLP densa, duas camadas ocultas, escrita em Keras/TensorFlow. Esta é a rede **de partida**
+(passos 2 e 3); a busca do passo 4 troca a arquitetura pela 128-64 que vai ao teste.
 
 ``` mermaid
 flowchart LR
@@ -94,7 +91,7 @@ flowchart LR
 |---|---------|---------|
 | Camadas ocultas | 32 → 16 | A capacidade tem de ser contada contra os **199 positivos**, não contra as 3.255 linhas. 32-16 dá 1.217 parâmetros, ou **7,6 por AVC de treino** — já desconfortável. |
 | Ativação | ReLU | Sem saturação no gradiente; as entradas chegam padronizadas (média 0, desvio 1) pelo `StandardScaler` final do pipeline do EDA. |
-| Inicialização | He uniform | Par canônico da ReLU: preserva a variância do sinal na ida, que Glorot subestima para ativações não simétricas. |
+| Inicialização | He uniform | Par padrão da ReLU: mantém a variância do sinal estável de camada em camada. |
 | Saída | **1 neurônio linear** | Binário: um logit basta. |
 | Perda | `BinaryCrossentropy(from_logits=True)` | Equivalente Keras do `BCEWithLogitsLoss`. O sigmoide vive **dentro** da perda, o que mantém o log-sum-exp estável em vez de deixar um sigmoide saturado arredondar para 0 ou 1 e zerar o gradiente. |
 | Desbalanceamento | `class_weight={0: 1, 1: 19.47}` | Peso = negativos/positivos do treino. Sem ele a rede minimiza a perda prevendo sempre 0. Aplicado **só no treino** — validação e teste mantêm a prevalência real. |
@@ -108,7 +105,7 @@ mostra que não foi contido o suficiente.
 
 | | Escolha | Por quê |
 |---|---------|---------|
-| Otimizador | Adam, `lr = 1e-3` | Passo adaptativo por parâmetro: com 20 features de escalas originais muito diferentes (idade, glicose, one-hots), o SGD com momentum exigiria ajuste fino de `lr` que o orçamento de validação não paga. |
+| Otimizador | Adam, `lr = 1e-3` | Passo adaptativo por parâmetro: funciona bem com o `lr` padrão, enquanto o SGD com momentum exigiria ajuste fino de `lr` que o orçamento de validação não paga. Quando há weight decay (passo 4), usa-se AdamW, a versão do Adam com decay desacoplado. |
 | Batch size | 64 | 51 passos por época. Em lotes muito maiores, a maioria dos batches não contém **nenhum** positivo (4,89% × 128 ≈ 6), e o gradiente da classe de interesse chega esparso. |
 | Épocas | até 200, early stopping | Nunca chegou perto: parou na época 39. |
 | Early stopping | `patience=20`, monitor `val_pr_auc` (modo max), `restore_best_weights=True` | **O monitor não é a perda.** Com 40 positivos na validação a perda ponderada oscila muito de época a época; o que a triagem precisa é da *ordenação* dos pacientes, que é exatamente o que a PR-AUC mede. |
@@ -134,54 +131,46 @@ Mesma arquitetura 32-16, mesma seed, mesmo early stopping; só a regularização
 | Técnica | PR-AUC treino | PR-AUC validação | Distância | Melhor época |
 |---|---|---|---|---|
 | nenhuma | 0,348 | 0,190 | +0,158 | 19 |
-| dropout 0,2 | 0,344 | 0,220 | **+0,124** | — |
-| weight decay 1e-3 (AdamW) | 0,348 | 0,190 | +0,159 | — |
-| dropout + weight decay | 0,352 | 0,220 | +0,133 | — |
-| batch norm | 0,417 | **0,223** | +0,194 | — |
+| dropout 0,2 | 0,344 | **0,220** | **+0,124** | 38 |
+| weight decay 1e-3 (AdamW) | 0,348 | 0,190 | +0,159 | 19 |
 
 ![Efeito de cada regularizador](figures/fig02-regularizacao.png)
 /// caption
 **Figura 2** — PR-AUC de treino e validação por técnica, com a distância anotada.
 ///
 
-Três leituras, e a terceira é a que muda a decisão:
+Duas leituras:
 
 1. **Dropout é o que efetivamente regulariza**: fecha a distância de 0,158 para 0,124 e
    ainda sobe a validação de 0,190 para 0,220. É o único que faz as duas coisas.
 2. **Weight decay a 1e-3, sozinho, não faz nada** (0,190 → 0,190; distância +0,159). A
    penalização L2 nessa magnitude é pequena demais frente ao sinal; só passa a importar a
-   1e-2, e aí em conjunto com dropout alto (ver 4B, cfg 8).
-3. **Batch norm dá a melhor validação (0,223) e a *pior* distância (+0,194)** — ela acelera o
-   ajuste ao treino mais do que generaliza. Mantê-la por causa do 0,223 seria escolher pelo
-   número isolado; a equipe não a levou para a busca, porque o problema deste dataset é
-   excesso de capacidade, não velocidade de convergência.
-
+   1e-2, e aí em conjunto com dropout alto (ver 4B, cfg 7).
 ### 4B. Busca, escolhida na validação
 
-Dez configurações, variando largura/profundidade, ativação, dropout, weight decay, learning
-rate e batch size. Ordenadas por PR-AUC de validação:
+Nove configurações (a rubrica pede 8 ou mais), variando largura/profundidade, dropout,
+weight decay, learning rate e batch size; todas com ReLU. Ordenadas por PR-AUC de validação:
 
-| # | Arquitetura | Ativação | Dropout | Weight decay | LR | Batch | Params | PR-AUC val |
-|---|---|---|---|---|---|---|---|---|
-| 8 | 128-64 | relu | 0,4 | 1e-2 | 5e-4 | 128 | 11.073 | **0,274** |
-| 7 | 64-32-16 | relu | 0,3 | 1e-3 | 1e-3 | 128 | 3.937 | 0,246 |
-| 4 | 32-16 | tanh | 0,2 | 1e-3 | 1e-3 | 64 | 1.217 | 0,237 |
-| 5 | 64-32 | relu | 0,3 | 1e-3 | 1e-3 | 64 | 3.457 | 0,232 |
-| 1 | 16 | relu | 0,0 | 0 | 1e-3 | 64 | 353 | 0,227 |
-| 6 | 64-32 | relu | 0,3 | 1e-2 | 5e-4 | 64 | 3.457 | 0,226 |
-| 9 | 32-16 | relu | 0,1 | 1e-4 | 3e-3 | 32 | 1.217 | 0,223 |
-| 10 | 16-8 | relu | 0,2 | 1e-3 | 1e-3 | 32 | 481 | 0,210 |
-| 3 | 32-16 | relu | 0,2 | 1e-3 | 1e-3 | 64 | 1.217 | 0,220 |
-| 2 | 32-16 | relu | 0,0 | 0 | 1e-3 | 64 | 1.217 | 0,190 |
+| # | Arquitetura | Dropout | Weight decay | LR | Batch | Params | PR-AUC val |
+|---|---|---|---|---|---|---|---|
+| 7 | 128-64 | 0,4 | 1e-2 | 5e-4 | 128 | 11.009 | **0,274** |
+| 6 | 64-32-16 | 0,3 | 1e-3 | 1e-3 | 128 | 3.969 | 0,246 |
+| 4 | 64-32 | 0,3 | 1e-3 | 1e-3 | 64 | 3.457 | 0,231 |
+| 5 | 64-32 | 0,3 | 1e-2 | 5e-4 | 64 | 3.457 | 0,231 |
+| 1 | 16 | 0,0 | 0 | 1e-3 | 64 | 353 | 0,227 |
+| 8 | 32-16 | 0,1 | 1e-4 | 3e-3 | 32 | 1.217 | 0,223 |
+| 3 | 32-16 | 0,2 | 1e-3 | 1e-3 | 64 | 1.217 | 0,220 |
+| 9 | 16-8 | 0,2 | 1e-3 | 1e-3 | 32 | 481 | 0,210 |
+| 2 | 32-16 | 0,0 | 0 | 1e-3 | 64 | 1.217 | 0,190 |
 
-A vencedora é a **cfg 8**: a *maior* rede da busca (11.073 parâmetros, 56 por positivo) com
+A vencedora é a **cfg 7**: a *maior* rede da busca (11.009 parâmetros, 55 por positivo) com
 a regularização *mais agressiva* (dropout 0,4 + weight decay 1e-2 + lr reduzido). O padrão
 da tabela é consistente — capacidade só ajuda acompanhada de regularização forte: a cfg 2,
 mesma arquitetura da cfg 3 sem dropout nem decay, é a última colocada (0,190).
 
 E um aviso que o passo 5 confirma: **a cfg 1, uma única camada de 16 unidades e 353
-parâmetros, faz 0,227 — empatada com a logística de 21 parâmetros.** Oito configurações mais
-complexas foram necessárias para ganhar 0,047 de PR-AUC de validação sobre isso.
+parâmetros, faz 0,227 — empatada com a logística de 21 parâmetros.** Foi preciso chegar a
+11.009 parâmetros para ganhar 0,047 de PR-AUC de validação sobre isso.
 
 ### 4C. Limiar, escolhido na validação
 
@@ -190,13 +179,13 @@ que pesa recall o dobro da precisão:
 
 | Limiar | Recall (val) | Precisão (val) |
 |---|---|---|
-| 0,500 | 0,925 | 0,137 |
+| 0,500 | 0,925 | 0,138 |
 | **0,585** (escolhido) | **0,800** | **0,180** |
 
 A justificativa de custo é clínica e assimétrica: num instrumento de **triagem**, um falso
 negativo é um paciente de risco mandado para casa, e um falso positivo é um exame
 confirmatório a mais. F2 codifica essa assimetria sem fingir que ela é infinita — a 0,5 o
-recall sobe para 0,925, mas a precisão cai a 0,137, e uma fila de triagem em que 86 de cada
+recall sobe para 0,925, mas a precisão cai a 0,138, e uma fila de triagem em que 86 de cada
 100 encaminhados não têm nada deixa de ser usada.
 
 ## Passo 5 · Avaliação no teste
@@ -204,15 +193,15 @@ recall sobe para 0,925, mas a precisão cai a 0,137, e uma fila de triagem em qu
 O teste foi tocado **uma única vez**, depois de fechadas arquitetura, regularização e limiar
 na validação. Três seeds (42, 7, 2024), mesma configuração vencedora:
 
-| Métrica | Trivial | Logística | Random forest | **Rede (3 seeds)** |
-|---|---|---|---|---|
-| **PR-AUC** | 0,049 | **0,227** | 0,169 | **0,182 ± 0,019** |
-| ROC-AUC | 0,500 | **0,850** | 0,824 | 0,822 ± 0,010 |
-| Acurácia | 0,951 | 0,776 | 0,929 | 0,790 ± 0,006 |
-| Macro F1 | 0,487 | 0,562 | 0,563 | 0,559 ± 0,005 |
-| Recall (AVC) | 0,00 | **0,780** | 0,140 | 0,673 ± 0,042 |
-| Precisão (AVC) | 0,00 | 0,152 | 0,194 | 0,146 ± 0,006 |
-| F1 (AVC) | 0,00 | **0,255** | 0,163 | 0,240 ± 0,010 |
+| Métrica | Trivial | Logística | **Rede (3 seeds)** |
+|---|---|---|---|
+| **PR-AUC** | 0,049 | **0,227** | **0,182 ± 0,019** |
+| ROC-AUC | 0,500 | **0,850** | 0,822 ± 0,010 |
+| Acurácia | 0,951 | 0,776 | 0,790 ± 0,006 |
+| Macro F1 | 0,487 | 0,562 | 0,559 ± 0,005 |
+| Recall (AVC) | 0,00 | **0,780** | 0,673 ± 0,042 |
+| Precisão (AVC) | 0,00 | 0,152 | 0,146 ± 0,005 |
+| F1 (AVC) | 0,00 | **0,255** | 0,240 ± 0,009 |
 
 Seeds individuais da rede: PR-AUC 0,197 / 0,161 / 0,189.
 
@@ -225,7 +214,7 @@ baselines. A linha tracejada da direita é a prevalência, 0,049.
 ![Matriz de confusão](figures/fig04-confusao.png)
 /// caption
 **Figura 4** — Matriz de confusão da rede no teste, limiar 0,585: 39 AVCs detectados, 11
-perdidos, 193 falsos positivos.
+perdidos, 192 falsos positivos.
 ///
 
 !!! failure "O critério do passo 0 não foi atendido"
@@ -233,9 +222,9 @@ perdidos, 193 falsos positivos.
     Pedia PR-AUC de teste **15% acima** da melhor baseline. A rede ficou **19,7% abaixo**:
     0,182 ± 0,019 contra 0,227 da logística. A logística também ganha em ROC-AUC (0,850 vs
     0,822), recall (0,780 vs 0,673) e F1 da classe positiva (0,255 vs 0,240), com 21
-    parâmetros contra 11.073.
+    parâmetros contra 11.009.
 
-A diferença entre validação e teste é o ponto mais instrutivo da entrega. A cfg 8 marcou
+A diferença entre validação e teste é o ponto mais instrutivo da entrega. A cfg 7 marcou
 **0,274 na validação** e **0,182 no teste** — uma queda de 0,09. A validação tem **40
 positivos**; escolher a melhor de dez configurações sobre 40 eventos não mede generalização,
 mede qual configuração acertou o ruído daquele recorte. O desvio entre seeds (±0,019) mostra
@@ -243,10 +232,6 @@ que mesmo *uma* configuração fixa varia nessa ordem de magnitude. Em outras pa
 busca do passo 4 produziu um vencedor otimista, e o teste cobrou a conta. O caminho correto
 aqui teria sido validação cruzada estratificada em k dobras sobre o treino, e não um único
 recorte de 814 linhas — é a mudança que a equipe faria primeiro.
-
-A acurácia merece uma nota: a random forest tem **0,929**, muito acima da rede (0,790) e da
-logística (0,776), e é o pior dos três modelos para esta tarefa — detecta **7 dos 50 AVCs**
-(recall 0,140). É a armadilha que o passo 0 antecipou, materializada.
 
 ## Passo 6 · Análise de erro
 
@@ -260,14 +245,14 @@ colunas one-hot isoladas, que criariam pacientes impossíveis (um paciente com d
 |---|---|---|
 | `age` | **0,0989** | ± 0,0110 |
 | `bmi` | 0,0351 | ± 0,0098 |
-| `hypertension` | 0,0094 | ± 0,0059 |
+| `hypertension` | 0,0096 | ± 0,0059 |
 | `smoking_status` | 0,0084 | ± 0,0095 |
-| `avg_glucose_level` | 0,0050 | ± 0,0072 |
-| `ever_married` | 0,0015 | ± 0,0072 |
+| `avg_glucose_level` | 0,0042 | ± 0,0072 |
+| `ever_married` | 0,0016 | ± 0,0072 |
 | `Residence_type` | −0,0104 | ± 0,0111 |
 | `gender` | −0,0200 | ± 0,0155 |
 | `heart_disease` | −0,0220 | ± 0,0071 |
-| `work_type` | −0,0243 | ± 0,0197 |
+| `work_type` | −0,0243 | ± 0,0190 |
 
 ![Importância por permutação](figures/fig05-permutacao.png)
 /// caption
@@ -281,7 +266,7 @@ Isto confirma o diagnóstico do EDA e fecha o argumento da entrega. `age` respon
 `heart_disease` ou `gender` *melhora* o modelo, o que significa que a rede extraiu dessas
 colunas apenas ajuste a particularidades do treino.
 
-O EDA mediu `age` sozinha com AUC **0,833**. A rede inteira, com 11.073 parâmetros e 20
+O EDA mediu `age` sozinha com AUC **0,833**. A rede inteira, com 11.009 parâmetros e 20
 features, faz ROC-AUC **0,822**. **A rede reconstruiu a idade e quase nada além dela** — e
 pagou o custo de variância por isso. É a resposta direta à pergunta do enunciado: não, a
 rede não aprendeu nada que os modelos simples não aprendam.
@@ -294,11 +279,11 @@ rede não aprendeu nada que os modelos simples não aprendam.
 | Idade | 30–45 | 210 | 4 | 0,250 | 0,029 |
 | Idade | 45–60 | 244 | 7 | 0,286 | 0,110 |
 | Idade | 60–75 | 184 | 17 | 0,941 | 0,551 |
-| Idade | 75+ | 103 | 22 | 0,909 | **0,852** |
+| Idade | 75+ | 103 | 22 | 0,909 | **0,840** |
 | `hypertension` | 1 | 101 | 15 | 1,000 | 0,721 |
 | `heart_disease` | 1 | 67 | 12 | 0,917 | 0,800 |
 | `bmi` ausente | sim | 39 | 6 | 1,000 | **0,758** |
-| `bmi` ausente | não | 979 | 44 | 0,750 | 0,180 |
+| `bmi` ausente | não | 979 | 44 | 0,750 | 0,179 |
 
 ![Recall e falso positivo por faixa de idade](figures/fig06-subgrupos.png)
 /// caption
@@ -308,8 +293,8 @@ rede não aprendeu nada que os modelos simples não aprendam.
 Três padrões, com hipótese para cada:
 
 1. **O modelo é um detector de idade com limiar perto dos 60 anos.** Abaixo de 60 o recall é
-   0,25–0,29; acima, 0,91–0,94. Mas a taxa de falso positivo acompanha: 0,852 acima de 75
-   anos. Ou seja, acima dos 75 a rede encaminha **85 de cada 100 pacientes sem AVC**. Para a
+   0,25–0,29; acima, 0,91–0,94. Mas a taxa de falso positivo acompanha: 0,840 acima de 75
+   anos. Ou seja, acima dos 75 a rede encaminha **84 de cada 100 pacientes sem AVC**. Para a
    faixa em que a triagem mais importa, a saída é quase constante, e um instrumento que
    marca quase todos não informa nada.
 2. **Os 11 falsos negativos são AVCs em pacientes jovens e sem comorbidade.** Os cinco de
@@ -318,7 +303,7 @@ Três padrões, com hipótese para cada:
    negativo — o EDA já havia registrado AVCs a 1,32 e 14 anos. Nenhuma arquitetura resolve
    isso; é um limite do dataset, não do modelo.
 3. **A ausência de BMI virou um atalho, como o EDA previu.** No subgrupo com `bmi` ausente
-   (39 pacientes) o recall é 1,000 e a taxa de FP é 0,758 — mais de 4× a do resto (0,180).
+   (39 pacientes) o recall é 1,000 e a taxa de FP é 0,758 — mais de 4× a do resto (0,179).
    Entre os cinco falsos positivos de maior score, **quatro têm `bmi` ausente**. O
    `MissingIndicator` não está codificando obesidade: está codificando idade avançada, pois
    pacientes idosos faltam mais a medidas antropométricas. O EDA já tinha deixado o flag
@@ -329,12 +314,12 @@ Três padrões, com hipótese para cada:
 
 **A rede não se justifica neste dataset.** O critério fixado antes de treinar — 15% de
 ganho em PR-AUC — não foi atendido nem de longe: a rede ficou 19,7% abaixo da regressão
-logística, perdendo também em ROC-AUC, recall e F1 da classe positiva, com 11.073
+logística, perdendo também em ROC-AUC, recall e F1 da classe positiva, com 11.009
 parâmetros contra 21. Entre os modelos testados, o que a equipe recomendaria para uma
 triagem é o **linear**, e a recomendação não é um empate técnico: é uma diferença
 consistente nas três seeds.
 
-A razão é dimensional, não de engenharia. São **199 AVCs no treino**. Um modelo com 7,6 a 56
+A razão é dimensional, não de engenharia. São **199 AVCs no treino**. Um modelo com 7,6 a 55
 parâmetros por evento positivo tem graus de liberdade para memorizar esses 199 casos, e foi
 o que ele fez — a distância treino–validação de +0,158 sem regularização, a queda de 0,274
 (validação) para 0,182 (teste), e o ±0,019 entre seeds são três medidas do mesmo fato. Somado
@@ -343,7 +328,7 @@ AUC 0,833 sozinha no EDA), que é o regime em que a não linearidade não tem o 
 
 ### Limitações
 
-- **A seleção do passo 4 é otimista.** Dez configurações escolhidas sobre 40 positivos de
+- **A seleção do passo 4 é otimista.** Nove configurações escolhidas sobre 40 positivos de
   validação. O número honesto da busca não é 0,274, é 0,182. A correção é validação cruzada
   estratificada em k dobras — a primeira mudança a fazer.
 - **O teste tem 50 positivos.** Um intervalo de confiança sobre recall 0,673 com 50 eventos
@@ -368,7 +353,7 @@ medidos acima:
 - **O recall cai para 0,25–0,29 abaixo dos 60 anos.** Um instrumento assim, usado como
   triagem, erra sistematicamente nos pacientes jovens — e são os casos em que o diagnóstico
   precoce muda mais o desfecho.
-- **A taxa de falso positivo chega a 0,852 acima dos 75 anos.** Em uma população idosa o
+- **A taxa de falso positivo chega a 0,840 acima dos 75 anos.** Em uma população idosa o
   modelo encaminha quase todos; o custo recai sobre o sistema de saúde e sobre pacientes
   submetidos a exames desnecessários.
 - **Há disparidade entre subgrupos não explicada por risco.** Recall 0,844 para mulheres
@@ -385,7 +370,7 @@ medidos acima:
 | Métrica principal | PR-AUC no teste |
 | Critério fixado | ≥ 15% acima da melhor baseline (3 seeds) |
 | Melhor baseline | Regressão logística, PR-AUC **0,227** |
-| Rede escolhida | MLP 128-64, ReLU, dropout 0,4, weight decay 1e-2, AdamW lr 5e-4, 11.073 params |
+| Rede escolhida | MLP 128-64, ReLU, dropout 0,4, weight decay 1e-2, AdamW lr 5e-4, 11.009 params |
 | Limiar | 0,585, por F2 na validação |
 | **Resultado da rede** | PR-AUC **0,182 ± 0,019**; ROC-AUC 0,822; recall 0,673; precisão 0,146 |
 | **Critério atendido?** | **Não** — 19,7% abaixo da baseline |
@@ -394,7 +379,7 @@ medidos acima:
 
 ## Código {#codigo}
 
-Roda de um clone limpo, em ~2,5 min de CPU:
+Roda de um clone limpo, em ~5 min de CPU:
 
 ```shell
 cd docs/projects/classification/code && python run.py

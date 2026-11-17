@@ -81,4 +81,4 @@ projeto.
 | 2026-10-08 | Descartar `id`; manter `smoking_status = Unknown` como categoria | `id` sem informação (AUC 0,509); `Unknown` concentra crianças |
 | 2026-10-08 | Manter o indicador de IMC ausente, com ablação na entrega 2 | ausência associada ao alvo (p = 1,9 × 10⁻²¹), possível vazamento |
 | 2026-10-08 | Remover as 23 linhas com `gender = Other` ou `work_type = Never_worked`, antes do split | categorias raras demais para a rede (1 e 22 linhas), nenhuma com AVC |
-| 2026-10-08 | Categóricas em one-hot completo; `StandardScaler` em todas as 20 features (numéricas e 0/1) | toda entrada da rede com média 0 e desvio 1; binárias raras ficam grandes (`heart_disease = 1` → +4,30), o que concentra os AVCs nas vizinhanças (4B); comparar com só centralizar na entrega 2 |
+| 2026-10-08 | Categóricas em one-hot completo; `StandardScaler` em todas as 20 features (numéricas e 0/1) | toda entrada da rede com média 0 e desvio 1; binárias raras ficam grandes (`heart_disease = 1` → +4,30), e são justamente as mais associadas ao AVC |

@@ -443,14 +443,6 @@
     }
   },
   "spearman_age_bmi_adults": 0.086,
-  "cramers_v_pairs": {
-    "ever_married × work_type": 0.563,
-    "ever_married × smoking_status": 0.353,
-    "work_type × smoking_status": 0.305,
-    "ever_married × hypertension": 0.162,
-    "work_type × hypertension": 0.16
-  },
-  "eta_age_by_worktype": 0.682,
   "base_rate_train": 4.89,
   "cat_target_train": {
     "gender": {
@@ -458,218 +450,118 @@
         "Female": {
           "n": 2381,
           "pos": 109,
-          "rate": 4.58,
-          "ci95": [
-            3.81,
-            5.49
-          ]
+          "rate": 4.58
         },
         "Male": {
           "n": 1688,
           "pos": 90,
-          "rate": 5.33,
-          "ci95": [
-            4.36,
-            6.51
-          ]
+          "rate": 5.33
         }
-      },
-      "cramers_v": 0.016,
-      "chi2": 1.05,
-      "p": 0.305,
-      "dof": 1
+      }
     },
     "ever_married": {
       "rows": {
         "No": {
           "n": 1408,
           "pos": 23,
-          "rate": 1.63,
-          "ci95": [
-            1.09,
-            2.44
-          ]
+          "rate": 1.63
         },
         "Yes": {
           "n": 2661,
           "pos": 176,
-          "rate": 6.61,
-          "ci95": [
-            5.73,
-            7.62
-          ]
+          "rate": 6.61
         }
-      },
-      "cramers_v": 0.109,
-      "chi2": 48.04,
-      "p": 4.18e-12,
-      "dof": 1
+      }
     },
     "work_type": {
       "rows": {
         "Govt_job": {
           "n": 530,
           "pos": 29,
-          "rate": 5.47,
-          "ci95": [
-            3.84,
-            7.75
-          ]
+          "rate": 5.47
         },
         "Private": {
           "n": 2333,
           "pos": 115,
-          "rate": 4.93,
-          "ci95": [
-            4.12,
-            5.88
-          ]
+          "rate": 4.93
         },
         "Self-employed": {
           "n": 645,
           "pos": 53,
-          "rate": 8.22,
-          "ci95": [
-            6.34,
-            10.59
-          ]
+          "rate": 8.22
         },
         "children": {
           "n": 561,
           "pos": 2,
-          "rate": 0.36,
-          "ci95": [
-            0.1,
-            1.29
-          ]
+          "rate": 0.36
         }
-      },
-      "cramers_v": 0.1,
-      "chi2": 40.53,
-      "p": 8.22e-09,
-      "dof": 3
+      }
     },
     "Residence_type": {
       "rows": {
         "Rural": {
           "n": 2022,
           "pos": 88,
-          "rate": 4.35,
-          "ci95": [
-            3.55,
-            5.33
-          ]
+          "rate": 4.35
         },
         "Urban": {
           "n": 2047,
           "pos": 111,
-          "rate": 5.42,
-          "ci95": [
-            4.52,
-            6.49
-          ]
+          "rate": 5.42
         }
-      },
-      "cramers_v": 0.024,
-      "chi2": 2.28,
-      "p": 0.131,
-      "dof": 1
+      }
     },
     "smoking_status": {
       "rows": {
         "Unknown": {
           "n": 1234,
           "pos": 39,
-          "rate": 3.16,
-          "ci95": [
-            2.32,
-            4.29
-          ]
+          "rate": 3.16
         },
         "formerly smoked": {
           "n": 715,
           "pos": 55,
-          "rate": 7.69,
-          "ci95": [
-            5.96,
-            9.88
-          ]
+          "rate": 7.69
         },
         "never smoked": {
           "n": 1485,
           "pos": 68,
-          "rate": 4.58,
-          "ci95": [
-            3.63,
-            5.76
-          ]
+          "rate": 4.58
         },
         "smokes": {
           "n": 635,
           "pos": 37,
-          "rate": 5.83,
-          "ci95": [
-            4.26,
-            7.93
-          ]
+          "rate": 5.83
         }
-      },
-      "cramers_v": 0.073,
-      "chi2": 21.51,
-      "p": 8.23e-05,
-      "dof": 3
+      }
     },
     "hypertension": {
       "rows": {
         "0": {
           "n": 3672,
           "pos": 148,
-          "rate": 4.03,
-          "ci95": [
-            3.44,
-            4.72
-          ]
+          "rate": 4.03
         },
         "1": {
           "n": 397,
           "pos": 51,
-          "rate": 12.85,
-          "ci95": [
-            9.91,
-            16.5
-          ]
+          "rate": 12.85
         }
-      },
-      "cramers_v": 0.119,
-      "chi2": 57.98,
-      "p": 2.65e-14,
-      "dof": 1
+      }
     },
     "heart_disease": {
       "rows": {
         "0": {
           "n": 3860,
           "pos": 164,
-          "rate": 4.25,
-          "ci95": [
-            3.66,
-            4.93
-          ]
+          "rate": 4.25
         },
         "1": {
           "n": 209,
           "pos": 35,
-          "rate": 16.75,
-          "ci95": [
-            12.29,
-            22.4
-          ]
+          "rate": 16.75
         }
-      },
-      "cramers_v": 0.125,
-      "chi2": 63.92,
-      "p": 1.3e-15,
-      "dof": 1
+      }
     }
   },
   "grouped_boxes": {
@@ -923,29 +815,6 @@
   "pca_pc1_by_target": {
     "0": 0.073,
     "1": -1.417
-  },
-  "umap_islands": {
-    "n_clusters": 61,
-    "noise": 0,
-    "purity_gender": 0.877,
-    "purity_ever_married": 0.93,
-    "purity_work_type": 0.959,
-    "purity_Residence_type": 0.884,
-    "purity_smoking_status": 0.91,
-    "purity_hypertension": 0.963,
-    "purity_heart_disease": 0.993,
-    "purity_stroke": 0.951
-  },
-  "knn10_enrichment": {
-    "pca": 0.1126,
-    "tsne_p5": 0.1146,
-    "tsne_p30": 0.1151,
-    "tsne_p100": 0.1261,
-    "umap_n5": 0.1166,
-    "umap_n15": 0.1206,
-    "umap_n100": 0.1111,
-    "full_20d": 0.1307,
-    "full_20d_binary_centered_only": 0.093
   },
   "pipeline": {
     "train_shape": [
