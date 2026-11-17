@@ -19,23 +19,19 @@ from keras import layers
 tf.get_logger().setLevel("ERROR")
 
 
-def build_mlp(n_features, widths=(32, 16), activation="relu", dropout=0.0,
-              weight_decay=0.0, batchnorm=False, lr=1e-3, seed=42):
+def build_mlp(n_features, widths=(32, 16), dropout=0.0, weight_decay=0.0,
+              lr=1e-3, seed=42):
     """MLP com uma única saída linear.
 
     `widths` curto por decisão: o treino tem 199 positivos, então a capacidade
     precisa ser contada contra esse número, não contra as 4.069 linhas.
     """
     keras.utils.set_random_seed(seed)
-    init = (keras.initializers.HeUniform(seed=seed) if activation == "relu"
-            else keras.initializers.GlorotUniform(seed=seed))
+    init = keras.initializers.HeUniform(seed=seed)  # par padrão da ReLU
 
     model = keras.Sequential([layers.Input(shape=(n_features,))])
     for w in widths:
-        model.add(layers.Dense(w, activation=None, kernel_initializer=init))
-        if batchnorm:
-            model.add(layers.BatchNormalization())
-        model.add(layers.Activation(activation))
+        model.add(layers.Dense(w, activation="relu", kernel_initializer=init))
         if dropout > 0:
             model.add(layers.Dropout(dropout, seed=seed))
     model.add(layers.Dense(1, activation=None, kernel_initializer=init))

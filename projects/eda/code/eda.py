@@ -19,11 +19,9 @@ import numpy as np
 import pandas as pd
 import umap
 from scipy.stats import chi2_contingency, skew
-from sklearn.cluster import DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.metrics import roc_auc_score
-from sklearn.neighbors import NearestNeighbors
 
 from preprocessing import (
     BINARY, CATEGORICAL, NUM_SKEWED, NUM_SYMMETRIC, RANDOM_STATE, TARGET,
@@ -65,36 +63,12 @@ def r(x, n=4):
     return None if x is None else round(float(x), n)
 
 
-def wilson(k, n, z=1.96):
-    """IC 95% de Wilson para uma proporção (estável com poucos positivos)."""
-    p = k / n
-    den = 1 + z**2 / n
-    c = (p + z**2 / (2 * n)) / den
-    h = z * np.sqrt(p * (1 - p) / n + z**2 / (4 * n**2)) / den
-    return c - h, c + h
-
-
-def cramers_v(a, b):
-    t = pd.crosstab(a, b)
-    chi2, p, dof, _ = chi2_contingency(t)
-    n = t.values.sum()
-    k = min(t.shape) - 1
-    return np.sqrt(chi2 / (n * k)), chi2, p, dof
-
-
 def scatter_by_target(ax, xy, y, s=6):
     """Positivos por cima, para não sumirem sob a classe majoritária."""
     for cls, color, alpha in [(0, NO, 0.35), (1, YES, 0.9)]:
         m = y == cls
         ax.scatter(xy[m, 0], xy[m, 1], s=s if cls == 0 else s * 2.5, c=color, alpha=alpha,
                    linewidths=0, label=LABEL[cls])
-
-
-def knn_enrichment(emb, y, k=10):
-    """Fração média de vizinhos com AVC entre os k vizinhos de cada ponto com AVC."""
-    nn = NearestNeighbors(n_neighbors=k + 1).fit(emb)
-    idx = nn.kneighbors(emb[y == 1], return_distance=False)[:, 1:]
-    return float(y[idx].mean())
 
 
 # =============================================================================
@@ -182,7 +156,7 @@ R["stroke_rate_bmi_missing"] = r(100 * tr.loc[tr.bmi.isna(), TARGET].mean(), 2)
 R["stroke_rate_bmi_present"] = r(100 * tr.loc[tr.bmi.notna(), TARGET].mean(), 2)
 R["bmi_missing_counts_train"] = {"missing": int(tr.bmi.isna().sum()),
                                  "missing_pos": int(tr.loc[tr.bmi.isna(), TARGET].sum())}
-_, _, p_miss, _ = cramers_v(tr.bmi.isna(), tr[TARGET])
+_, p_miss, _, _ = chi2_contingency(pd.crosstab(tr.bmi.isna(), tr[TARGET]))
 R["bmi_missing_chi2_p"] = float(f"{p_miss:.3g}")
 auc_single = {}
 for c in NUM + BINARY:
@@ -319,14 +293,6 @@ fig.suptitle("Dispersão das numéricas no treino, por alvo: AVC concentrado aci
 fig.tight_layout()
 save(fig, "fig05-dispersao.png")
 
-# Associação entre categóricas (Cramér's V) — redundância do lado categórico
-cv = {}
-for i, a in enumerate(cats):
-    for b in cats[i + 1:]:
-        cv[f"{a} × {b}"] = r(cramers_v(tr[a], tr[b])[0], 3)
-R["cramers_v_pairs"] = dict(sorted(cv.items(), key=lambda kv: -kv[1])[:5])
-R["eta_age_by_worktype"] = None  # preenchido em 3C
-
 # =============================================================================
 # 3B · categóricas × alvo
 # =============================================================================
@@ -335,13 +301,9 @@ R["base_rate_train"] = r(100 * base, 2)
 rates = {}
 for c in cats:
     g = tr.groupby(c)[TARGET].agg(["sum", "count"])
-    v, chi2, p, dof = cramers_v(tr[c], tr[TARGET])
-    rows = {}
-    for k, (pos, n) in g.iterrows():
-        lo, hi = wilson(pos, n)
-        rows[str(k)] = {"n": int(n), "pos": int(pos), "rate": r(100 * pos / n, 2),
-                        "ci95": [r(100 * lo, 2), r(100 * hi, 2)]}
-    rates[c] = {"rows": rows, "cramers_v": r(v, 3), "chi2": r(chi2, 2), "p": float(f"{p:.3g}"), "dof": int(dof)}
+    rows = {str(k): {"n": int(n), "pos": int(pos), "rate": r(100 * pos / n, 2)}
+            for k, (pos, n) in g.iterrows()}
+    rates[c] = {"rows": rows}
 R["cat_target_train"] = rates
 
 fig, axes = plt.subplots(2, 4, figsize=(13, 6.2))
@@ -350,13 +312,10 @@ for ax, c in zip(axes.flat, cats):
     keys = sorted(rows, key=lambda k: rows[k]["rate"])
     y = np.arange(len(keys))
     rate = np.array([rows[k]["rate"] for k in keys])
-    lo = rate - np.array([rows[k]["ci95"][0] for k in keys])
-    hi = np.array([rows[k]["ci95"][1] for k in keys]) - rate
-    ax.errorbar(rate, y, xerr=[lo, hi], fmt="o", color=YES, ecolor=MUTED, capsize=3, ms=6,
-                label="taxa de AVC (IC 95%)")
+    ax.barh(y, rate, color=YES, height=0.6, label="taxa de AVC na categoria")
     ax.axvline(100 * base, color=NO, ls="--", lw=1.5, label=f"taxa geral {100 * base:.1f}%")
     ax.set_yticks(y, [f"{k} (n={rows[k]['n']})" for k in keys], fontsize=8)
-    ax.set(title=f"{c} — V = {rates[c]['cramers_v']:.2f}", xlabel="% com AVC", xlim=(-1, 32))
+    ax.set(title=c, xlabel="% com AVC", xlim=(0, 25))
     ax.grid(axis="y", visible=False)
 axes.flat[-1].axis("off")
 h, l = axes.flat[0].get_legend_handles_labels()
@@ -409,10 +368,6 @@ fig.suptitle("Boxplots agrupados (treino): 'Unknown' e 'children' são, sobretud
 fig.tight_layout()
 save(fig, "fig08-boxplots-agrupados.png")
 R["grouped_boxes"] = box
-# razão de correlação η: quanto da variância de age é explicada por work_type
-gm = tr.groupby("work_type").age.transform("mean")
-R["eta_age_by_worktype"] = r(np.sqrt(((gm - tr.age.mean()) ** 2).sum() / ((tr.age - tr.age.mean()) ** 2).sum()), 3)
-
 # =============================================================================
 # 4A · efeito das estratégias (medido no treino)
 # =============================================================================
@@ -497,12 +452,10 @@ fig.suptitle("PCA nas 20 features escaladas do treino", fontweight="bold")
 fig.tight_layout()
 save(fig, "fig10-pca.png")
 
-enrich = {"pca": r(knn_enrichment(Z, yt), 4)}
 PERPLEXITIES = [5, 30, 100]
 fig, axes = plt.subplots(1, 3, figsize=(14, 4.4))
 for ax, perp in zip(axes, PERPLEXITIES):
     E = TSNE(n_components=2, perplexity=perp, init="pca", random_state=RANDOM_STATE).fit_transform(Xt_train)
-    enrich[f"tsne_p{perp}"] = r(knn_enrichment(E, yt), 4)
     scatter_by_target(ax, E, yt, s=4)
     ax.set(title=f"t-SNE, perplexity = {perp}", xlabel="t-SNE 1", ylabel="t-SNE 2")
 axes[0].legend(loc="upper right", markerscale=2)
@@ -514,30 +467,12 @@ NEIGHBORS = [5, 15, 100]
 fig, axes = plt.subplots(1, 3, figsize=(14, 4.4))
 for ax, nn in zip(axes, NEIGHBORS):
     E = umap.UMAP(n_neighbors=nn, min_dist=0.1, random_state=RANDOM_STATE).fit_transform(Xt_train)
-    enrich[f"umap_n{nn}"] = r(knn_enrichment(E, yt), 4)
-    if nn == 15:  # o que define as "ilhas"? pureza de cada categórica dentro dos clusters
-        lab = DBSCAN(eps=0.5, min_samples=10).fit_predict(E)
-        ok = lab >= 0
-        R["umap_islands"] = {"n_clusters": int(len(set(lab[ok]))), "noise": int((~ok).sum())}
-        for c in cats + [TARGET]:
-            v = tr[c].astype(str).to_numpy()
-            hits = sum(pd.Series(v[lab == k]).value_counts().iloc[0] for k in set(lab[ok]))
-            R["umap_islands"][f"purity_{c}"] = r(hits / ok.sum(), 3)
     scatter_by_target(ax, E, yt, s=4)
     ax.set(title=f"UMAP, n_neighbors = {nn}", xlabel="UMAP 1", ylabel="UMAP 2")
 axes[0].legend(loc="upper right", markerscale=2)
 fig.suptitle("UMAP do treino com três tamanhos de vizinhança", fontweight="bold")
 fig.tight_layout()
 save(fig, "fig12-umap.png")
-enrich["full_20d"] = r(knn_enrichment(Xt_train, yt), 4)
-# Variante para comparação: numéricas padronizadas, colunas 0/1 só centralizadas
-Xalt = cols_ct.transform(X_train)
-k = len(NUM)
-Xalt[:, :k] = (Xalt[:, :k] - Xalt[:, :k].mean(0)) / Xalt[:, :k].std(0)
-Xalt[:, k:] = Xalt[:, k:] - Xalt[:, k:].mean(0)
-enrich["full_20d_binary_centered_only"] = r(knn_enrichment(Xalt, yt), 4)
-R["knn10_enrichment"] = enrich
-
 # =============================================================================
 # 4C · pipeline
 # =============================================================================
@@ -545,5 +480,5 @@ R["pipeline"] = {"train_shape": list(Xt_train.shape), "test_shape": list(Xt_test
                  "nan_train": int(np.isnan(Xt_train).sum()), "nan_test": int(np.isnan(Xt_test).sum()),
                  "feature_names": names}
 
-OUT.write_text(json.dumps(R, indent=2, ensure_ascii=False))
+OUT.write_text(json.dumps(R, indent=2, ensure_ascii=False), encoding="utf-8")
 print(f"ok: {len(list(FIG.glob('fig*.png')))} figuras, números em {OUT.name}")
