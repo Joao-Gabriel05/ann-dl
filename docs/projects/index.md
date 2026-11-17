@@ -59,8 +59,8 @@ duas viáveis.
 Prever AVC a partir de dados demográficos e clínicos é um problema real de triagem, e o
 dataset traz as dificuldades que tornam a classificação não trivial: desbalanceamento de
 19,4 : 1 (o classificador trivial acerta 95,11% sem detectar nenhum caso), uma feature
-dominante (idade, AUC 0,833 sozinha) que o modelo precisa superar, e ausência informativa
-no IMC. Detalhes no [EDA](eda/index.md).
+dominante (idade, AUC 0,833 sozinha) que o modelo precisa superar, e uma ausência no IMC
+associada ao alvo, que o pipeline imputa sem transformar em feature. Detalhes no [EDA](eda/index.md).
 
 ## Status
 
@@ -79,6 +79,6 @@ projeto.
 | 2026-10-08 | Dataset: Stroke Prediction (Kaggle); tarefa: classificação de `stroke` | tabular, misto numérico/categórico, desbalanceado; ver [EDA](eda/index.md) |
 | 2026-10-08 | Split 80/20 estratificado, `random_state=42`, fixo para as três entregas | só 249 positivos; o teste (50 AVCs) é usado uma única vez |
 | 2026-10-08 | Descartar `id`; manter `smoking_status = Unknown` como categoria | `id` sem informação (AUC 0,509); `Unknown` concentra crianças |
-| 2026-10-08 | Manter o indicador de IMC ausente, com ablação na entrega 2 | ausência associada ao alvo (p = 1,9 × 10⁻²¹), possível vazamento |
+| 2026-10-08 | Não usar a ausência de IMC como feature; imputar `bmi` pela mediana | ausência associada ao alvo (p = 1,9 × 10⁻²¹): o modelo aprenderia o processo de coleta, não o paciente |
 | 2026-10-08 | Remover as 23 linhas com `gender = Other` ou `work_type = Never_worked`, antes do split | categorias raras demais para a rede (1 e 22 linhas), nenhuma com AVC |
-| 2026-10-08 | Categóricas em one-hot completo; `StandardScaler` em todas as 20 features (numéricas e 0/1) | toda entrada da rede com média 0 e desvio 1; binárias raras ficam grandes (`heart_disease = 1` → +4,30), e são justamente as mais associadas ao AVC |
+| 2026-10-08 | Categóricas em one-hot completo; `StandardScaler` em todas as 19 features (numéricas e 0/1) | toda entrada da rede com média 0 e desvio 1; binárias raras ficam grandes (`heart_disease = 1` → +4,30), e são justamente as mais associadas ao AVC |

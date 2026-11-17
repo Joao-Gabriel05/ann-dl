@@ -168,9 +168,9 @@ Após a limpeza: **5.087 × 12**.
    Entre as linhas sem IMC, a taxa de AVC é de 20,99%, contra 4,22% com IMC (χ², p = 1,9 ×
    10⁻²¹). É o principal candidato a vazamento: se a falta do dado for consequência do
    próprio AVC (por exemplo, paciente acamado e não pesado), um modelo que aprenda "IMC
-   ausente → AVC" estará aprendendo o processo de coleta, não o paciente. Mantemos o
-   indicador de ausência, porque o sinal é real no arquivo, mas a próxima entrega
-   **compara o modelo com e sem ele** (`build_preprocessor(bmi_indicator=False)`).
+   ausente → AVC" estará aprendendo o processo de coleta, não o paciente. Por isso a
+   **ausência não entra como feature**: o `bmi` ausente é só imputado pela mediana do
+   treino (4A), e o modelo vê um IMC típico no lugar do valor que falta.
 4. **Dado transversal.** Não sabemos se hipertensão, glicose e IMC foram medidos antes ou
    depois do AVC. Se foi depois, há causalidade reversa, que nenhum split corrige; isso
    limita o que podemos afirmar, não o que podemos treinar.
@@ -398,13 +398,13 @@ sem NaN e sem colunas quase vazias.
 | # | Problema (seção) | Estratégia | Ajustado no treino |
 |---|------------------|------------|--------------------|
 | 1 | **Categorias raras**: `Other` e `Never_worked` (1B, 2B) | **remover as 23 linhas** antes do split (filtro por valor) | — |
-| 2 | **Ausentes**: `bmi`, 3,93%, não aleatório (1B) | imputar com a **mediana** (assimetria 1,14 torna a média enviesada) e adicionar o indicador `missingindicator_bmi` (0/1) | mediana = 28,0 kg/m²; 162 imputações no treino, 39 no teste |
+| 2 | **Ausentes**: `bmi`, 3,93%, não aleatório (1B) | imputar com a **mediana** (assimetria 1,14 torna a média enviesada); a ausência não vira feature, para o modelo não aprender o processo de coleta (1B) | mediana = 28,0 kg/m²; 162 imputações no treino, 39 no teste |
 | 3 | **Ausente disfarçado**: `smoking_status = Unknown`, 30,22% (1B, 3C) | manter como **categoria própria**: imputar inventaria fumo em crianças | — |
 | 4 | **Outliers**: cauda da glicose = segundo modo; IMC até 97,6 (2A) | **nenhuma linha removida** (só há 199 positivos no treino); **winsorizar** nos quantis 0,5% e 99,5% | glicose ∈ [55,85; 248,23]; IMC ∈ [14,30; 56,40]; **83 linhas** afetadas (2,04%): 42 pela glicose, 41 pelo IMC |
 | 5 | **Assimetria** de glicose e IMC (2A) | **Yeo-Johnson** | assimetria: glicose 1,57 → 0,08; IMC 1,14 → 0,00 |
 | 6 | **Codificação**: 5 nominais, cardinalidade ≤ 4 (2B) | **one-hot completo** (uma coluna por categoria, inclusive nas binárias de texto) | categorias do treino |
 | 7 | **Categoria nova em produção** | `handle_unknown="ignore"`: categoria desconhecida vira o vetor sem nenhum "1" antes da escala, distinto de toda categoria conhecida | teste: `gender = "Other"` → (`gender_Female`, `gender_Male`) = (−1,19; −0,84) |
-| 8 | **Escala**: numéricas em unidades diferentes (anos, mg/dL, kg/m²) e colunas 0/1 com médias diferentes (2A, 2B) | **um único `StandardScaler` sobre as 20 colunas de saída**, numéricas e 0/1 | média 0 e desvio 1 em todas as 20 |
+| 8 | **Escala**: numéricas em unidades diferentes (anos, mg/dL, kg/m²) e colunas 0/1 com médias diferentes (2A, 2B) | **um único `StandardScaler` sobre as 19 colunas de saída**, numéricas e 0/1 | média 0 e desvio 1 em todas as 19 |
 | 9 | Desbalanceamento 19,4 : 1 (1C) | **não é pré-processamento**; vai para a modelagem: pesos de classe na perda e limiar ajustado em validação. Nada de SMOTE antes do split | — |
 
 **Por que one-hot.** As 5 nominais não têm ordem: Private, Self-employed, Govt_job e
@@ -422,14 +422,13 @@ converge melhor quando toda entrada tem média 0 e variância parecida. Uma entr
 positiva empurra todos os pesos de um neurônio na mesma direção a cada passo. Uma
 entrada com variância muito menor que as outras recebe, na prática, uma taxa de
 aprendizado menor. Por isso o pipeline termina com **um único `StandardScaler` sobre as
-20 colunas**, depois das transformações de cada tipo, e não um scaler só nas numéricas.
+19 colunas**, depois das transformações de cada tipo, e não um scaler só nas numéricas.
 
 **Consequência a acompanhar.** Uma coluna 0/1 com proporção p passa a valer √((1−p)/p)
 quando o paciente está na categoria. As categorias raras viram os maiores valores da
 entrada:
 
-- `missingindicator_bmi = 1` vale +4,91, `heart_disease = 1` vale +4,30 e
-  `hypertension = 1` vale +3,04.
+- `heart_disease = 1` vale +4,30 e `hypertension = 1` vale +3,04.
 - O maior valor de uma numérica é +2,75, no IMC.
 
 Isso é deliberado: `heart_disease` e `hypertension` são justamente as categóricas mais
@@ -448,7 +447,7 @@ máximo fica em +1,97.
 
 ### 4B. Dimensionality reduction
 
-As três projeções usam as **20 features escaladas do treino**, ou seja, a saída do pipeline,
+As três projeções usam as **19 features escaladas do treino**, ou seja, a saída do pipeline,
 todas com média 0 e desvio 1, coloridas pelo alvo.
 
 ![PCA](figures/fig10-pca.png)
@@ -456,28 +455,28 @@ todas com média 0 e desvio 1, coloridas pelo alvo.
 **Figura 10**: PCA. Variância explicada (individual e acumulada) e projeção em PC1 × PC2.
 ///
 
-**Variância.** PC1 explica 20,52% e PC2 10,50%: juntos, **31,02%**. São necessárias 10
-componentes para 80%, 12 para 90% e 13 para 95%. As 5 últimas têm variância 0. Isso é
+**Variância.** PC1 explica 21,57% e PC2 10,98%: juntos, **32,55%**. São necessárias 9
+componentes para 80%, 11 para 90% e 12 para 95%. As 5 últimas têm variância 0. Isso é
 esperado: com o one-hot completo, as colunas de cada uma das 5 nominais somam um valor
 constante, e são exatamente 5 dependências lineares. Com todas as colunas em variância 1,
 nenhum grupo domina, e a variância se espalha por muitas componentes.
 
 **Loadings.**
 
-| PC1 (20,52%) | loading | PC2 (10,50%) | loading |
+| PC1 (21,57%) | loading | PC2 (10,98%) | loading |
 |---|---:|---|---:|
-| `ever_married_No` | +0,418 | `gender_Female` | **+0,640** |
-| `ever_married_Yes` | −0,418 | `gender_Male` | **−0,640** |
-| `age` | −0,412 | `smoking_status_never smoked` | +0,223 |
-| `work_type_children` | +0,404 | `heart_disease` | −0,166 |
-| `smoking_status_Unknown` | +0,313 | `smoking_status_formerly smoked` | −0,135 |
-| `bmi` | −0,301 | `work_type_Private` | +0,135 |
+| `ever_married_No` | +0,418 | `gender_Female` | **+0,650** |
+| `ever_married_Yes` | −0,418 | `gender_Male` | **−0,650** |
+| `age` | −0,412 | `smoking_status_never smoked` | +0,211 |
+| `work_type_children` | +0,405 | `heart_disease` | −0,158 |
+| `smoking_status_Unknown` | +0,314 | `smoking_status_formerly smoked` | −0,135 |
+| `bmi` | −0,302 | `work_type_Private` | +0,127 |
 
 - **PC1 é um eixo de "fase da vida"**: à direita, solteiro, criança e tabagismo
   `Unknown`; à esquerda, idade e IMC altos. O sinal é arbitrário. O aglomerado isolado em
   PC1 ≈ +4,5 são as crianças.
 - **PC2 é o gênero**: as duas faixas horizontais da Figura 10 são mulheres e homens.
-- A média de PC1 é −1,42 nos AVCs contra +0,07 no resto: os casos ficam do lado dos mais
+- A média de PC1 é −1,39 nos AVCs contra +0,07 no resto: os casos ficam do lado dos mais
   velhos, mas se sobrepõem em toda essa metade da nuvem.
 
 ![t-SNE](figures/fig11-tsne.png)
@@ -527,21 +526,21 @@ Xt_train, Xt_test = pre.transform(X_train), pre.transform(X_test)
 Saída de `python3 docs/projects/eda/code/preprocessing.py`:
 
 ```text
-train: (4069, 10) -> (4069, 20)
-test:  (1018, 10) -> (1018, 20)
+train: (4069, 10) -> (4069, 19)
+test:  (1018, 10) -> (1018, 19)
 NaN restantes: treino=0, teste=0
-20 features: age, avg_glucose_level, bmi, missingindicator_bmi, hypertension, heart_disease,
-gender_Female, gender_Male, ever_married_No, ever_married_Yes, work_type_Govt_job,
-work_type_Private, work_type_Self-employed, work_type_children, Residence_type_Rural,
-Residence_type_Urban, smoking_status_Unknown, smoking_status_formerly smoked,
-smoking_status_never smoked, smoking_status_smokes
+19 features: age, avg_glucose_level, bmi, hypertension, heart_disease, gender_Female,
+gender_Male, ever_married_No, ever_married_Yes, work_type_Govt_job, work_type_Private,
+work_type_Self-employed, work_type_children, Residence_type_Rural, Residence_type_Urban,
+smoking_status_Unknown, smoking_status_formerly smoked, smoking_status_never smoked,
+smoking_status_smokes
 ```
 
-- **Shape final:** treino (4.069, 20), teste (1.018, 20).
+- **Shape final:** treino (4.069, 19), teste (1.018, 19).
 - **NaN restantes:** 0 no treino e 0 no teste.
-- **Composição das 20 colunas:** 3 numéricas + 1 indicador de ausência + 2 binárias + 14
-  one-hot (gender 2, ever_married 2, work_type 4, Residence_type 2, smoking_status 4).
-- **Escala:** todas as 20 colunas saem do `StandardScaler` final com média 0 e desvio 1
+- **Composição das 19 colunas:** 3 numéricas + 2 binárias + 14 one-hot (gender 2,
+  ever_married 2, work_type 4, Residence_type 2, smoking_status 4).
+- **Escala:** todas as 19 colunas saem do `StandardScaler` final com média 0 e desvio 1
   no treino.
 - **Estrutura:** `Pipeline([("columns", ColumnTransformer(...)), ("scale", StandardScaler())])`.
 
@@ -568,7 +567,7 @@ smoking_status_never smoked, smoking_status_smokes
 | 1 | O alvo é muito desbalanceado: 4,89% de AVC (19,43 : 1); acurácia trivial de 95,11% | 1C, Figura 1 |
 | 2 | A idade é a feature dominante: AUC isolada de 0,833; mediana de 70 anos nos AVCs contra 43 | 1B, 3C, Figura 7 |
 | 3 | A glicose é bimodal; seu efeito está no modo diabético (IQR de 117 nos AVCs contra 35) | 2A, 3C, Figuras 2 e 7 |
-| 4 | A falta de IMC prevê o alvo: 17,09% de ausência nos AVCs contra 3,31% (p = 1,9 × 10⁻²¹) | 1B |
+| 4 | A falta de IMC prevê o alvo (17,09% de ausência nos AVCs contra 3,31%; p = 1,9 × 10⁻²¹); por isso é só imputada pela mediana, sem virar feature | 1B, 4A |
 | 5 | Hipertensão e doença cardíaca multiplicam a taxa de AVC por 3,2 e 3,9; gênero e residência não importam | 3B, Figura 6 |
 | 6 | Várias categóricas são idade disfarçada (`children` só até 16 anos; "casado" e "ex-fumante" concentram os mais velhos) | 3A, 3C, Figura 8 |
 | 7 | Não há redundância numérica: maior ρ = 0,380 (age × bmi), que cai para 0,086 entre adultos | 3A, Figura 4 |
@@ -581,7 +580,6 @@ smoking_status_never smoked, smoking_status_smokes
 |-------|-------|
 | **Desbalanceamento**: o modelo aprende a responder sempre 0 | pesos de classe na perda; limiar escolhido em validação; métricas: PR-AUC, recall/precisão da classe 1, acurácia balanceada; nunca acurácia |
 | **Só 50 positivos no teste**: métricas com variância alta | seleção por validação cruzada estratificada (5 folds) no treino; teste usado uma vez; reportar IC por *bootstrap* |
-| **Indicador de IMC ausente pode ser vazamento** | treinar com e sem `missingindicator_bmi` (`build_preprocessor(bmi_indicator=False)`) e reportar a diferença |
 | **O modelo pode ser "só idade"** | comparar com o baseline da idade isolada (AUC 0,833); o modelo precisa superá-lo |
 | **16,83% de crianças, com só 2 AVCs no treino**, inflam métricas fáceis | reportar métricas também no subconjunto de adultos (≥ 18 anos) |
 | **Pacientes `Other` / `Never_worked` em produção** ficam fora da população de treino | o encoder os aceita (vetor desconhecido), mas a previsão para eles não é validada; registrar como limitação |
@@ -604,8 +602,8 @@ O código roda de um clone limpo: o CSV está versionado em `data/`, e
 | 6 | Size of the training and test sets | treino 4.069 (199 AVC) · teste 1.018 (50 AVC) |
 | 7 | Most correlated numerical pair and its value | `age` × `bmi`: Spearman ρ = 0,380 (Pearson 0,332) |
 | 8 | Rows affected by the outlier strategy | 83 linhas do treino (2,04%) winsorizadas; 0 removidas |
-| 9 | Variance explained by PC1 + PC2 | 31,02% (20,52% + 10,50%) |
-| 10 | `shape` of train and test after the pipeline | (4.069, 20) e (1.018, 20); 0 NaN |
+| 9 | Variance explained by PC1 + PC2 | 32,55% (21,57% + 10,98%) |
+| 10 | `shape` of train and test after the pipeline | (4.069, 19) e (1.018, 19); 0 NaN |
 
 ## Referências
 
