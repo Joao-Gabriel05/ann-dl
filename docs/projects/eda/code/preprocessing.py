@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, OneToOneFeatureMixin, TransformerMixin
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import MissingIndicator, SimpleImputer
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, PowerTransformer, StandardScaler
@@ -78,15 +78,16 @@ class QuantileClipper(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
         return np.clip(np.asarray(X, dtype=float), self.low_, self.high_)
 
 
-def build_preprocessor(bmi_indicator=True):
+def build_preprocessor():
     """Pipeline não ajustado; chame .fit(X_train) antes de usar.
 
     Duas etapas: "columns" transforma cada tipo de coluna (imputação, winsorização,
     Yeo-Johnson, one-hot) e "scale" aplica um único StandardScaler a TODAS as features
     de saída, numéricas e 0/1 — toda entrada da rede chega com média 0 e desvio 1.
 
-    bmi_indicator=False remove a coluna "BMI ausente" — para a ablação de vazamento
-    prevista na entrega seguinte (ver 1B no relatório).
+    O BMI ausente é imputado pela mediana do treino e não vira feature: a ausência
+    está associada ao alvo (ver 1B no relatório), e o modelo aprenderia o processo de
+    coleta, não o paciente.
     """
     skewed = Pipeline([
         ("impute", SimpleImputer(strategy="median")),  # mediana: robusta à cauda
@@ -100,13 +101,9 @@ def build_preprocessor(bmi_indicator=True):
     blocks = [
         ("num", "passthrough", NUM_SYMMETRIC),
         ("skew", skewed, NUM_SKEWED),
-        # 0/1 fora do pipeline numérico: preserva o sinal de "BMI ausente"
-        ("miss", MissingIndicator(features="all"), ["bmi"]),
         ("bin", "passthrough", BINARY),
         ("cat", categorical, CATEGORICAL),
     ]
-    if not bmi_indicator:
-        blocks = [b for b in blocks if b[0] != "miss"]
     return Pipeline([
         ("columns", ColumnTransformer(blocks, verbose_feature_names_out=False)),
         ("scale", StandardScaler()),

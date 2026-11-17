@@ -448,7 +448,7 @@ ax = axes[1]
 scatter_by_target(ax, Z, yt)
 ax.set(title="PCA 2D colorido pelo alvo", xlabel=f"PC1 ({100 * evr[0]:.1f}%)", ylabel=f"PC2 ({100 * evr[1]:.1f}%)")
 ax.legend(loc="upper right", markerscale=2)
-fig.suptitle("PCA nas 20 features escaladas do treino", fontweight="bold")
+fig.suptitle(f"PCA nas {len(names)} features escaladas do treino", fontweight="bold")
 fig.tight_layout()
 save(fig, "fig10-pca.png")
 
